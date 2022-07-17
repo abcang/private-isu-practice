@@ -174,6 +174,7 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
+	var userIDs []int
 
 	for _, p := range results {
 		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
@@ -192,10 +193,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		}
 
 		for i := 0; i < len(comments); i++ {
-			err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-			if err != nil {
-				return nil, err
-			}
+			userIDs = append(userIDs, comments[i].UserID)
 		}
 
 		// reverse
@@ -208,6 +206,41 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		p.CSRFToken = csrfToken
 
 		posts = append(posts, p)
+	}
+
+	if len(userIDs) == 0 {
+		return posts, nil
+	}
+
+	s := []string{}
+	for range userIDs {
+		s = append(s, "?")
+	}
+	placeholder := strings.Join(s, ", ")
+
+	// convert []int -> []interface{}
+	args := make([]interface{}, len(userIDs))
+	for i, v := range userIDs {
+		args[i] = v
+	}
+
+	users := []User{}
+	err := db.Select(&users, "SELECT * FROM `users` WHERE `id` IN ("+placeholder+")", args...)
+	if err != nil {
+		// log.Print("SELECT * FROM `users` WHERE `id` IN (" + placeholder + ")")
+		return nil, err
+	}
+	userByID := map[int]User{}
+	for _, user := range users {
+		userByID[user.ID] = user
+	}
+
+	for _, p := range posts {
+		for _, c := range p.Comments {
+			if user, ok := userByID[c.UserID]; ok {
+				c.User = user
+			}
+		}
 	}
 
 	return posts, nil
