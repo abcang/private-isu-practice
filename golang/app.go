@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	crand "crypto/rand"
 	"fmt"
 	"html/template"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Songmu/smartcache"
 	"github.com/bradfitz/gomemcache/memcache"
 	gsm "github.com/bradleypeabody/gorilla-sessions-memcache"
 	"github.com/go-chi/chi/v5"
@@ -405,22 +407,52 @@ func getLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-func getIndex(w http.ResponseWriter, r *http.Request) {
-	me := getSessionUser(r)
-
+func getIndexPosts() ([]Post, error) {
 	results := []Post{}
 
 	err := db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name` FROM `posts` STRAIGHT_JOIN users ON users.id = posts.user_id AND users.del_flg = 0 ORDER BY `posts`.`created_at` DESC LIMIT ?", postsPerPage)
 	if err != nil {
 		log.Print(err)
-		return
+		return nil, err
 	}
 
-	posts, err := makePosts(results, getCSRFToken(r), false)
+	return makePosts(results, "", false)
+}
+
+const (
+	expire     = 1000 * time.Millisecond
+	softExpire = 500 * time.Millisecond
+)
+
+var ca = smartcache.New(expire, softExpire, func(ctx context.Context) (interface{}, error) {
+	val, err := getIndexPosts()
+	return val, err
+})
+
+func getIndex(w http.ResponseWriter, r *http.Request) {
+	me := getSessionUser(r)
+
+	postsInterface, err := ca.Get(context.Background())
 	if err != nil {
 		log.Print(err)
 		return
 	}
+
+	posts := postsInterface.([]Post)
+	csrfToken := getCSRFToken(r)
+	for _, post := range posts {
+		post.CSRFToken = csrfToken
+	}
+
+	// posts, err := getIndexPosts()
+	// if err != nil {
+	// 	log.Print(err)
+	// 	return
+	// }
+	// csrfToken := getCSRFToken(r)
+	// for _, post := range posts {
+	// 	post.CSRFToken = csrfToken
+	// }
 
 	fmap := template.FuncMap{
 		"imageURL": imageURL,

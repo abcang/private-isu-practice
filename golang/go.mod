@@ -12,6 +12,9 @@ require (
 )
 
 require (
+	github.com/Songmu/flextime v0.0.6 // indirect
+	github.com/Songmu/smartcache v0.0.1 // indirect
 	github.com/gorilla/securecookie v1.1.1 // indirect
 	github.com/memcachier/mc v2.0.1+incompatible // indirect
+	golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a // indirect
 )
