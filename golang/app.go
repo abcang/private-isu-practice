@@ -410,7 +410,7 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	err := db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name` FROM `posts` JOIN users ON users.id = posts.user_id AND users.del_flg = 0 ORDER BY `posts`.`created_at` DESC LIMIT ?", postsPerPage)
+	err := db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name` FROM `posts` STRAIGHT_JOIN users ON users.id = posts.user_id AND users.del_flg = 0 ORDER BY `posts`.`created_at` DESC LIMIT ?", postsPerPage)
 	if err != nil {
 		log.Print(err)
 		return
@@ -544,7 +544,7 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-	err = db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name` FROM `posts` JOIN users ON users.id = posts.user_id AND users.del_flg = 0 WHERE `posts`.`created_at` <= ?  ORDER BY `posts`.`created_at` DESC LIMIT ?", t.Format(ISO8601Format), postsPerPage)
+	err = db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name` FROM `posts` STRAIGHT_JOIN users ON users.id = posts.user_id AND users.del_flg = 0 WHERE `posts`.`created_at` <= ?  ORDER BY `posts`.`created_at` DESC LIMIT ?", t.Format(ISO8601Format), postsPerPage)
 	if err != nil {
 		log.Print(err)
 		return
