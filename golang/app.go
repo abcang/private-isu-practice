@@ -605,15 +605,19 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mime := ""
+	ext := ""
 	if file != nil {
 		// 投稿のContent-Typeからファイルのタイプを決定する
 		contentType := header.Header["Content-Type"][0]
 		if strings.Contains(contentType, "jpeg") {
 			mime = "image/jpeg"
+			ext = "jpg"
 		} else if strings.Contains(contentType, "png") {
 			mime = "image/png"
+			ext = "png"
 		} else if strings.Contains(contentType, "gif") {
 			mime = "image/gif"
+			ext = "gif"
 		} else {
 			session := getSession(r)
 			session.Values["notice"] = "投稿できる画像形式はjpgとpngとgifだけです"
@@ -658,7 +662,31 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err = storeImage(int(pid), filedata, ext)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
+}
+
+func storeImage(pid int, filedata []byte, ext string) error {
+	dirname := "../public/image"
+	os.MkdirAll(dirname, os.ModePerm)
+
+	filename := path.Join(dirname, fmt.Sprintf("%d.%s", pid, ext))
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(filedata)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func getImage(w http.ResponseWriter, r *http.Request) {
@@ -677,6 +705,12 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ext := chi.URLParam(r, "ext")
+
+	err = storeImage(pid, post.Imgdata, ext)
+	if err != nil {
+		log.Print(err)
+		return
+	}
 
 	if ext == "jpg" && post.Mime == "image/jpeg" ||
 		ext == "png" && post.Mime == "image/png" ||
