@@ -75,6 +75,7 @@ func init() {
 		memdAddr = "localhost:11211"
 	}
 	memcacheClient := memcache.New(memdAddr)
+	memcacheClient.DeleteAll()
 	store = gsm.NewMemcacheStore(memcacheClient, "iscogram_", []byte("sendagaya"))
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 }
