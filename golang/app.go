@@ -168,12 +168,11 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 	}
 }
 
-func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
-	var posts []Post
+func makePosts(posts []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var userIDs []int
 
-	for _, p := range results {
-		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
+	for index := range posts {
+		err := db.Get(&posts[index].CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", posts[index].ID)
 		if err != nil {
 			return nil, err
 		}
@@ -183,7 +182,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 			query += " LIMIT 3"
 		}
 		var comments []Comment
-		err = db.Select(&comments, query, p.ID)
+		err = db.Select(&comments, query, posts[index].ID)
 		if err != nil {
 			return nil, err
 		}
@@ -197,11 +196,9 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 			comments[i], comments[j] = comments[j], comments[i]
 		}
 
-		p.Comments = comments
+		posts[index].Comments = comments
 
-		p.CSRFToken = csrfToken
-
-		posts = append(posts, p)
+		posts[index].CSRFToken = csrfToken
 	}
 
 	if len(userIDs) == 0 {
@@ -231,10 +228,10 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		userByID[user.ID] = user
 	}
 
-	for _, p := range posts {
-		for _, c := range p.Comments {
-			if user, ok := userByID[c.UserID]; ok {
-				c.User = user
+	for i := range posts {
+		for j := range posts[i].Comments {
+			if user, ok := userByID[posts[i].Comments[j].UserID]; ok {
+				posts[i].Comments[j].User = user
 			}
 		}
 	}
