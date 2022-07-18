@@ -187,9 +187,11 @@ func makePosts(posts []Post, csrfToken string, allComments bool) ([]Post, error)
 	var userIDs []int
 
 	for index := range posts {
-		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
-		if !allComments {
-			query += " LIMIT 3"
+		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at`"
+		if allComments {
+			query += " ASC"
+		} else {
+			query += " DESC LIMIT 3"
 		}
 		var comments []Comment
 		err := db.Select(&comments, query, posts[index].ID)
@@ -201,9 +203,11 @@ func makePosts(posts []Post, csrfToken string, allComments bool) ([]Post, error)
 			userIDs = append(userIDs, comments[i].UserID)
 		}
 
-		// reverse
-		for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
-			comments[i], comments[j] = comments[j], comments[i]
+		if !allComments {
+			// reverse
+			for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
+				comments[i], comments[j] = comments[j], comments[i]
+			}
 		}
 
 		posts[index].Comments = comments
