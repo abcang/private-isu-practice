@@ -54,7 +54,7 @@ type Post struct {
 	Mime         string    `db:"mime"`
 	CreatedAt    time.Time `db:"created_at"`
 	AccountName  string    `db:"account_name"`
-	CommentCount int
+	CommentCount int       `db:"comment_count"`
 	Comments     []Comment
 	User         User
 	CSRFToken    string
@@ -67,6 +67,11 @@ type Comment struct {
 	Comment   string    `db:"comment"`
 	CreatedAt time.Time `db:"created_at"`
 	User      User
+}
+
+type PostCommentCount struct {
+	PostID int `db:"post_id"`
+	Count  int `db:"count"`
 }
 
 func init() {
@@ -91,6 +96,16 @@ func dbInitialize() {
 
 	for _, sql := range sqls {
 		db.Exec(sql)
+	}
+
+	commentCountsByPost := []PostCommentCount{}
+	err := db.Select(&commentCountsByPost, "SELECT `post_id`, COUNT(*) AS `count` FROM `comments` GROUP BY `post_id`")
+	if err != nil {
+		return
+	}
+
+	for _, commentCountByPost := range commentCountsByPost {
+		db.Exec("UPDATE `posts` SET `comment_count` = ? WHERE `id` = ?", commentCountByPost.Count, commentCountByPost.PostID)
 	}
 }
 
@@ -172,17 +187,12 @@ func makePosts(posts []Post, csrfToken string, allComments bool) ([]Post, error)
 	var userIDs []int
 
 	for index := range posts {
-		err := db.Get(&posts[index].CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", posts[index].ID)
-		if err != nil {
-			return nil, err
-		}
-
 		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
 		if !allComments {
 			query += " LIMIT 3"
 		}
 		var comments []Comment
-		err = db.Select(&comments, query, posts[index].ID)
+		err := db.Select(&comments, query, posts[index].ID)
 		if err != nil {
 			return nil, err
 		}
@@ -401,7 +411,7 @@ func getLogout(w http.ResponseWriter, r *http.Request) {
 func getIndexPosts() ([]Post, error) {
 	results := []Post{}
 
-	err := db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name` FROM `posts` STRAIGHT_JOIN users ON users.id = posts.user_id AND users.del_flg = 0 ORDER BY `posts`.`created_at` DESC LIMIT ?", postsPerPage)
+	err := db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name`, `comment_count` FROM `posts` STRAIGHT_JOIN users ON users.id = posts.user_id AND users.del_flg = 0 ORDER BY `posts`.`created_at` DESC LIMIT ?", postsPerPage)
 	if err != nil {
 		log.Print(err)
 		return nil, err
@@ -479,7 +489,7 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	err = db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name` FROM `posts` JOIN users ON users.id = posts.user_id AND users.del_flg = 0 WHERE `user_id` = ? ORDER BY `posts`.`created_at` DESC LIMIT ?", user.ID, postsPerPage)
+	err = db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name`, `comment_count` FROM `posts` JOIN users ON users.id = posts.user_id AND users.del_flg = 0 WHERE `user_id` = ? ORDER BY `posts`.`created_at` DESC LIMIT ?", user.ID, postsPerPage)
 	if err != nil {
 		log.Print(err)
 		return
@@ -567,7 +577,7 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-	err = db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name` FROM `posts` STRAIGHT_JOIN users ON users.id = posts.user_id AND users.del_flg = 0 WHERE `posts`.`created_at` <= ?  ORDER BY `posts`.`created_at` DESC LIMIT ?", t.Format(ISO8601Format), postsPerPage)
+	err = db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name`, `comment_count` FROM `posts` STRAIGHT_JOIN users ON users.id = posts.user_id AND users.del_flg = 0 WHERE `posts`.`created_at` <= ?  ORDER BY `posts`.`created_at` DESC LIMIT ?", t.Format(ISO8601Format), postsPerPage)
 	if err != nil {
 		log.Print(err)
 		return
@@ -603,7 +613,7 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-	err = db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name` FROM `posts` JOIN users ON users.id = posts.user_id AND users.del_flg = 0  WHERE `posts`.`id` = ?", pid)
+	err = db.Select(&results, "SELECT `posts`.`id`, `user_id`, `body`, `mime`, `posts`.`created_at`, `account_name`, `comment_count` FROM `posts` JOIN users ON users.id = posts.user_id AND users.del_flg = 0  WHERE `posts`.`id` = ?", pid)
 	if err != nil {
 		log.Print(err)
 		return
@@ -804,6 +814,12 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 
 	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)"
 	_, err = db.Exec(query, postID, me.ID, r.FormValue("comment"))
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	_, err = db.Exec("UPDATE `posts` SET `comment_count` = `comment_count` + 1 WHERE `id` = ?", postID)
 	if err != nil {
 		log.Print(err)
 		return
