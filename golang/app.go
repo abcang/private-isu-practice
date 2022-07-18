@@ -23,6 +23,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -183,31 +184,65 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 	}
 }
 
+var lruCache, _ = lru.NewARC(256)
+
+func get3Comment(postID int) ([]Comment, error) {
+	query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC LIMIT 3"
+	var comments []Comment
+	err := db.Select(&comments, query, postID)
+	if err != nil {
+		return nil, err
+	}
+
+	// reverse
+	for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
+		comments[i], comments[j] = comments[j], comments[i]
+	}
+
+	return comments, nil
+}
+
+func get3CommentWithCache(postID int, commentCount int) ([]Comment, error) {
+	key := fmt.Sprintf("post_comment_%d_%d", postID, commentCount)
+	lruCa, ok := lruCache.Get(key)
+
+	var err error
+	var comments []Comment
+	if ok {
+		comments = lruCa.([]Comment)
+	} else {
+		comments, err = get3Comment(postID)
+		if err != nil {
+			return nil, err
+		}
+		lruCache.Add(key, comments)
+	}
+
+	return comments, nil
+}
+
 func makePosts(posts []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var userIDs []int
 
 	for index := range posts {
-		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at`"
-		if allComments {
-			query += " ASC"
-		} else {
-			query += " DESC LIMIT 3"
-		}
 		var comments []Comment
-		err := db.Select(&comments, query, posts[index].ID)
-		if err != nil {
-			return nil, err
+		var err error
+
+		if allComments {
+			query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` ASC"
+			err := db.Select(&comments, query, posts[index].ID)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			comments, err = get3CommentWithCache(posts[index].ID, posts[index].CommentCount)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		for i := 0; i < len(comments); i++ {
 			userIDs = append(userIDs, comments[i].UserID)
-		}
-
-		if !allComments {
-			// reverse
-			for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
-				comments[i], comments[j] = comments[j], comments[i]
-			}
 		}
 
 		posts[index].Comments = comments
